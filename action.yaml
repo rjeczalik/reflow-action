@@ -1,0 +1,69 @@
+name: reflow
+description: |
+  Action for dispatching workflow runs from public and private repositories.
+
+inputs:
+  owner:
+    description: GitHub repository owner
+    required:    true
+    type:        string
+  repo:
+    description: GitHub repository name
+    required:    true
+    type:        string
+  workflow:
+    description: Workflow file name
+    required:    true
+    type:        string
+  inputs:
+    description: Input variables for the workflow dispatch event
+    required:    true
+    type:        string
+  token:
+    description: GitHub token to use
+    required:    false
+    type:        string
+  ref:
+    description: A branch name or a tag to use
+    required:    false
+    type:        string
+    default:     heads/master
+  encoding:
+    description: Encoding of the inout field
+    required:    false
+    type:        string
+    default:     json
+  interval:
+    description: Run status polling interval
+    required:    false
+    type:        string
+    default:     30s
+runs:
+  using: composite
+  steps:
+    - name: Install reflow
+      env:
+        REFLOW_URL: https://github.com/rjeczalik/reflow/releases/download/v1.0.0/reflow-linux-amd64
+      run: |
+        do_curl() {
+          curl --disable --fail --fail-early --location --connect-timeout 10 --show-error --silent $1
+        }
+
+        mkdir -p bin
+        do_curl "$REFLOW_URL" > bin/reflow
+        chmod +x bin/reflow
+        echo "PATH=$(pwd)/bin:$PATH" >> $GITHUB_ENV
+      shell: bash
+    - name: Reflow
+      env:
+        GITHUB_TOKEN: ${{ inputs.token || github.token }}
+      run: |
+        cat <<EOF | reflow -o "${{ inputs.owner }}" -r "${{ inputs.repo }}" -t "${{ inputs.encoding }}" -b "${{ inputs.ref }}" -i "${{ inputs.interval }}" -w "${{ inputs.workflow }}"
+        ${{ inputs.inputs }}
+        EOF
+      shell: bash
+    - name: Cleanup
+      if: ${{ always() }}
+      run: |
+        rm -fv bin/reflow
+      shell: bash
