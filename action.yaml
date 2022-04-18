@@ -61,7 +61,7 @@ runs:
         ${{ toJson(github) }}
         EOF
 
-        cat <<EOF | ./bin/reflow -o "${{ inputs.owner }}" -r "${{ inputs.repo }}" -t "${{ inputs.encoding }}" -b "${{ inputs.ref }}" -i "${{ inputs.interval }}" -w "${{ inputs.workflow }}" --context-github bin/.github.json
+        cat <<EOF | ./bin/reflow call -o "${{ inputs.owner }}" -r "${{ inputs.repo }}" -t "${{ inputs.encoding }}" -b "${{ inputs.ref }}" -i "${{ inputs.interval }}" -w "${{ inputs.workflow }}" --context-github bin/.github.json
         ${{ inputs.inputs }}
         EOF
       shell: bash
