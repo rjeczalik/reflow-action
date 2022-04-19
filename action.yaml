@@ -158,19 +158,27 @@ runs:
         {{ toEnvPrefix "REFLOW_GIT_" .git }}
         EOF
       shell:  ${{ steps.var.outputs.shell }}
+    - name: prepare debug files
+      if:   ${{ failure() && inputs.debug_shell == 'true' }}
+      run: |
+        mv -f ${{ steps.context-github.outputs.file }} context-github.json
+        mv -f ${{ steps.context-values.outputs.file }} context-values.yaml
+        mv -f ${{ steps.inputs.outputs.file }} inputs.yaml
+      shell:  ${{ steps.var.outputs.shell }}
     - uses: actions/upload-artifact@v3
       if:   ${{ failure() && inputs.debug_shell == 'true' }}
       with:
-        name: debug-files
+        name: reflow-debug-files
         path: |
-          ${{ steps.context-github.outputs.file }}
-          ${{ steps.context-values.outputs.file }}
-          ${{ steps.inputs.outputs.file }}
+          context-github.json
+          context-values.yaml
+          inputs.yaml
     - name: Cleanup
       if: ${{ always() }}
       run: |
         rm -fv bin/reflow \
           ${{ steps.context-github.outputs.file }} \
           ${{ steps.context-values.outputs.file }} \
-          ${{ steps.inputs.outputs.file }}
+          ${{ steps.inputs.outputs.file }} \
+          context-github.json context-values.yaml inputs.yaml
       shell:  ${{ steps.var.outputs.shell }}
