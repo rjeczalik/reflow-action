@@ -3,47 +3,63 @@ description: |
   Action for dispatching workflow runs from public and private repositories.
 
 inputs:
-  owner:
-    description: GitHub repository owner
-    required:    true
+  token:
+    description: GitHub token to use (github.token by default)
+    required:    false
     type:        string
-  repo:
-    description: GitHub repository name
-    required:    true
-    type:        string
-  workflow:
-    description: Workflow file name
-    required:    true
+  call:
+    description: Manual workflow to call, e.g. owner/repo/.github/workflows/workflow.yaml@master
+    required:    false
     type:        string
   inputs:
     description: Input variables for the workflow dispatch event
+    required:    false
+    type:        string
+  template:
+    description: Template string to evaluate as the output
+    required:    false
+    type:        string
+    default:     '{"git": {{ toJson .git }}}'
+  values:
+    description: YAML-encoded object to pass as {{ .values }} during template evaluation
+    required:    false
+    type:        string
+  interval:
+    description: Workflow run's interval of status polling
     required:    true
     type:        string
-  token:
-    description: GitHub token to use
-    required:    false
-    type:        string
-  ref:
-    description: A branch name or a tag to use
-    required:    false
-    type:        string
-    default:     heads/master
-  encoding:
-    description: Encoding of the inout field
-    required:    false
-    type:        string
-    default:     json
-  interval:
-    description: Run status polling interval
-    required:    false
-    type:        string
     default:     30s
+  debug_shell:
+    description: Whether to debug shell commands
+    required:    true
+    type:        string
+    default:     'false'
+
+outputs:
+  template:
+    description: Result of evaluating the template
+    value:       ${{ steps.template.outputs.result }}
+
 runs:
   using: composite
   steps:
+    - name: Set up variables
+      id:   var
+      run: |
+        cat <<EOF
+        ::add-mask::${{ inputs.token || github.token }}
+        ::set-output name=token::${{ inputs.token || github.token }}
+        EOF
+
+        if [[ "${{ inputs.debug_shell }}" == "true" ]]; then
+          echo "::set-output name=shell::bash --noprofile --norc -e -o pipefail -x {0}"
+        else
+          echo "::set-output name=shell::bash --noprofile --norc -e -o pipefail {0}"
+        fi
+      shell: bash
     - name: Install reflow
       env:
-        REFLOW_URL: https://github.com/rjeczalik/reflow/releases/download/v1.3.0/reflow-linux-amd64
+        REFLOW_URL: https://github.com/rjeczalik/reflow/releases/download/v1.4.0/reflow-linux-amd64
       run: |
         do_curl() {
           curl --disable --fail --fail-early --location --connect-timeout 10 --show-error --silent $1
@@ -52,21 +68,105 @@ runs:
         mkdir -p bin
         do_curl "$REFLOW_URL" > bin/reflow
         chmod +x bin/reflow
-      shell: bash
-    - name: Reflow
-      env:
-        GITHUB_TOKEN: ${{ inputs.token || github.token }}
+      shell: ${{ steps.var.outputs.shell }}
+    - name: Write github context file
+      id:   context-github
       run: |
-        cat >bin/.github.json <<EOF
-        ${{ toJson(github) }}
+        tmp=$(mktemp)
+
+        # cherry-pick important fields from github context
+        # do not pass sensitive information like github.token or user info
+        cat >$tmp <<EOF
+        {
+          "sha": "${{ github.sha }}",
+          "ref": "${{ github.ref }}",
+          "repository": "${{ github.repository }}",
+          "event_name": "${{ github.event_name }}",
+          "event": ${{ toJson(github.event) }}
+        }
         EOF
 
-        cat <<EOF | ./bin/reflow call -o "${{ inputs.owner }}" -r "${{ inputs.repo }}" -t "${{ inputs.encoding }}" -b "${{ inputs.ref }}" -i "${{ inputs.interval }}" -w "${{ inputs.workflow }}" --context-github bin/.github.json
+        cat <<EOF
+        ::set-output name=file::$tmp
+        EOF
+      shell:  ${{ steps.var.outputs.shell }}
+    - name: Write values context file
+      id:   context-values
+        REFLOW_CONTEXT_GITHUB: ${{ steps.context-github.outputs.file }}
+        GITHUB_TOKEN:          ${{ step.var.outputs.token }}
+        PATH:                  ${{ github.workspace }}/bin:${{ env.PATH }}
+      run: |
+        tmp=$(mktemp)
+
+        cat <<EOF | refmt fmt > $tmp
+        ${{ inputs.values }}
+        EOF
+
+        cat <<EOF
+        ::set-output name=file::$tmp
+        EOF
+      shell:  ${{ steps.var.outputs.shell }}
+    - name: Reflow template
+      id:   template
+      env:
+        REFLOW_CONTEXT_GITHUB: ${{ steps.context-github.outputs.file }}
+        REFLOW_CONTEXT_VALUES: ${{ steps.context-values.outputs.file }}
+        GITHUB_TOKEN:          ${{ step.var.outputs.token }}
+        PATH:                  ${{ github.workspace }}/bin:${{ env.PATH }}
+      run: |
+        tmp=$(mktemp)
+
+        cat <<EOF | reflow fmt >> $tmp
+        ${{ inputs.template }}
+        EOF
+
+        cat <<EOF
+        ::set-output name=result::$(cat $tmp)
+        EOF
+
+        cat <<EOF | reflow fmt >> $GITHUB_ENV
+        {{ .git | toEnvPrefix "REFLOW_GIT_" }}
+        EOF
+      shell:  ${{ steps.var.outputs.shell }}
+    - name: Reflow call workflow
+      if:   ${{ inputs.call != '' }}
+      env:
+        REFLOW_CONTEXT_GITHUB: ${{ steps.context-github.outputs.file }}
+        REFLOW_CONTEXT_VALUES: ${{ steps.context-values.outputs.file }}
+        GITHUB_TOKEN:          ${{ step.var.outputs.token }}
+        PATH:                  ${{ github.workspace }}/bin:${{ env.PATH }}
+      run: |
+        cat <<EOF | reflow call --uses "${{ inputs.call }}" --interval "${{ inputs.interval }}"
         ${{ inputs.inputs }}
         EOF
-      shell: bash
+      shell:  ${{ steps.var.outputs.shell }}
+    - name: Reflow export environment variables
+      if:   ${{ inputs.export_env == 'true' }}
+      run: |
+        cat <<EOF | reflow fmt --context-github bin/.github.json >> $GITHUB_ENV
+        {{ toEnvPrefix "REFLOW_GIT_" .git }}
+        EOF
+      shell:  ${{ steps.var.outputs.shell }}
+    - name: Reflow template
+      id:   template
+      env:
+        GITHUB_TOKEN: ${{ step.var.outputs.token }}
+        PATH:         ${{ github.workspace }}/bin:${{ env.PATH }}
+      run: |
+        tmp=$(mktemp)
+
+        cat <<EOF | reflow fmt --context-github bin/.github.json >> $tmp
+        ${{ inputs.template }}
+        EOF
+
+        cat <<EOF
+        ::set-output name=result::$(cat $tmp)
+        EOF
+
+        rm -vf $tmp
+      shell:  ${{ steps.var.outputs.shell }}
     - name: Cleanup
       if: ${{ always() }}
       run: |
         rm -fv bin/reflow bin/.github.json
-      shell: bash
+      shell:  ${{ steps.var.outputs.shell }}
