@@ -73,7 +73,7 @@ runs:
     - name: Write github context file
       id:   context-github
       run: |
-        tmp=$(mktemp)
+        tmp=$(mktemp context-github.json.XXXXXX)
 
         # cherry-pick important fields from github context
         # do not pass sensitive information like github.token or user info
@@ -97,7 +97,7 @@ runs:
         REFLOW_CONTEXT_GITHUB: ${{ steps.context-github.outputs.file }}
         GITHUB_TOKEN:          ${{ steps.var.outputs.token }}
       run: |
-        tmp=$(mktemp)
+        tmp=$(mktemp context-values.yaml.XXXXXX)
 
         cat <<EOF | reflow fmt > $tmp
         ${{ inputs.values }}
@@ -110,7 +110,7 @@ runs:
     - name: Write inputs file
       id:   inputs
       run: |
-        tmp=$(mktemp)
+        tmp=$(mktemp inputs.yaml.XXXXXX)
 
         cat >$tmp <<EOF
         ${{ inputs.inputs }}
@@ -158,27 +158,19 @@ runs:
         {{ toEnvPrefix "REFLOW_GIT_" .git }}
         EOF
       shell:  ${{ steps.var.outputs.shell }}
-    - name: prepare debug files
-      if:   ${{ failure() && inputs.debug_shell == 'true' }}
-      run: |
-        mv -f ${{ steps.context-github.outputs.file }} context-github.json
-        mv -f ${{ steps.context-values.outputs.file }} context-values.yaml
-        mv -f ${{ steps.inputs.outputs.file }} inputs.yaml
-      shell:  ${{ steps.var.outputs.shell }}
     - uses: actions/upload-artifact@v3
       if:   ${{ failure() && inputs.debug_shell == 'true' }}
       with:
         name: reflow-debug-files
         path: |
-          context-github.json
-          context-values.yaml
-          inputs.yaml
+          ${{ steps.context-github.outputs.file }}
+          ${{ steps.context-values.outputs.file }}
+          ${{ steps.inputs.outputs.file }}
     - name: Cleanup
       if: ${{ always() }}
       run: |
         rm -fv bin/reflow \
           ${{ steps.context-github.outputs.file }} \
           ${{ steps.context-values.outputs.file }} \
-          ${{ steps.inputs.outputs.file }} \
-          context-github.json context-values.yaml inputs.yaml
+          ${{ steps.inputs.outputs.file }}
       shell:  ${{ steps.var.outputs.shell }}
