@@ -59,7 +59,7 @@ runs:
       shell: bash
     - name: Install reflow
       env:
-        REFLOW_URL: https://github.com/rjeczalik/reflow/releases/download/v1.4.1/reflow-linux-amd64
+        REFLOW_URL: https://github.com/rjeczalik/reflow/releases/download/v1.4.2/reflow-linux-amd64
       run: |
         do_curl() {
           curl --disable --fail --fail-early --location --connect-timeout 10 --show-error --silent $1
@@ -107,6 +107,18 @@ runs:
         ::set-output name=file::$tmp
         EOF
       shell:  ${{ steps.var.outputs.shell }}
+    - name: Write inputs file
+      id:   inputs
+      run: |
+        tmp=$(mktemp)
+
+        cat >$tmp <<EOF
+        ${{ inputs.inputs }}
+        EOF
+
+        cat <<EOF
+        ::set-output name=file::$tmp
+        EOF
     - name: Reflow template
       id:   template
       env:
@@ -133,11 +145,10 @@ runs:
       env:
         REFLOW_CONTEXT_GITHUB: ${{ steps.context-github.outputs.file }}
         REFLOW_CONTEXT_VALUES: ${{ steps.context-values.outputs.file }}
+        REFLOW_INPUTS:         ${{ steps.inputs.outputs.file }}
         GITHUB_TOKEN:          ${{ steps.var.outputs.token }}
       run: |
-        cat <<EOF | reflow call --uses "${{ inputs.call }}" --interval "${{ inputs.interval }}"
-        ${{ inputs.inputs }}
-        EOF
+        reflow call --uses "${{ inputs.call }}" --interval "${{ inputs.interval }}"
       shell:  ${{ steps.var.outputs.shell }}
     - name: Reflow export environment variables
       if:   ${{ inputs.export_env == 'true' }}
@@ -146,8 +157,29 @@ runs:
         {{ toEnvPrefix "REFLOW_GIT_" .git }}
         EOF
       shell:  ${{ steps.var.outputs.shell }}
+    - name: Debug
+      if:   ${{ failure() && inputs.debug_shell == 'true' }}
+      run: |
+        if [[ -f "${{ steps.context-github.outputs.file }}" ]]; then
+          echo "# context-github:"
+          cat ${{ steps.context-github.outputs.file }}
+        fi
+
+        if [[ -f "${{ steps.context-values.outputs.file }}" ]]; then
+          echo "# context-values:"
+          cat ${{ steps.context-values.outputs.file }}
+        fi
+
+        if [[ -f "${{ steps.inputs.outputs.file }}" ]]; then
+          echo "# inputs:"
+          cat ${{ steps.inputs.outputs.file }}
+        fi
+      shell:  ${{ steps.var.outputs.shell }}
     - name: Cleanup
       if: ${{ always() }}
       run: |
-        rm -fv bin/reflow bin/.github.json
+        rm -fv bin/reflow \
+          ${{ steps.context-github.outputs.file }} \
+          ${{ steps.context-values.outputs.file }} \
+          ${{ steps.inputs.outputs.file }}
       shell:  ${{ steps.var.outputs.shell }}
