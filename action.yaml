@@ -158,24 +158,14 @@ runs:
         {{ toEnvPrefix "REFLOW_GIT_" .git }}
         EOF
       shell:  ${{ steps.var.outputs.shell }}
-    - name: Debug
+    - uses: actions/upload-artifact@v3
       if:   ${{ failure() && inputs.debug_shell == 'true' }}
-      run: |
-        if [[ -f "${{ steps.context-github.outputs.file }}" ]]; then
-          echo "# context-github:"
-          cat ${{ steps.context-github.outputs.file }}
-        fi
-
-        if [[ -f "${{ steps.context-values.outputs.file }}" ]]; then
-          echo "# context-values:"
-          cat ${{ steps.context-values.outputs.file }}
-        fi
-
-        if [[ -f "${{ steps.inputs.outputs.file }}" ]]; then
-          echo "# inputs:"
-          cat ${{ steps.inputs.outputs.file }}
-        fi
-      shell:  ${{ steps.var.outputs.shell }}
+      with:
+        name: debug-files
+        path: |
+          ${{ steps.context-github.outputs.file }}
+          ${{ steps.context-values.outputs.file }}
+          ${{ steps.inputs.outputs.file }}
     - name: Cleanup
       if: ${{ always() }}
       run: |
