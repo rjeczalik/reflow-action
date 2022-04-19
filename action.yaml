@@ -94,7 +94,7 @@ runs:
       id:   context-values
       env:
         REFLOW_CONTEXT_GITHUB: ${{ steps.context-github.outputs.file }}
-        GITHUB_TOKEN:          ${{ step.var.outputs.token }}
+        GITHUB_TOKEN:          ${{ steps.var.outputs.token }}
         PATH:                  ${{ github.workspace }}/bin:${{ env.PATH }}
       run: |
         tmp=$(mktemp)
@@ -112,7 +112,7 @@ runs:
       env:
         REFLOW_CONTEXT_GITHUB: ${{ steps.context-github.outputs.file }}
         REFLOW_CONTEXT_VALUES: ${{ steps.context-values.outputs.file }}
-        GITHUB_TOKEN:          ${{ step.var.outputs.token }}
+        GITHUB_TOKEN:          ${{ steps.var.outputs.token }}
         PATH:                  ${{ github.workspace }}/bin:${{ env.PATH }}
       run: |
         tmp=$(mktemp)
@@ -134,7 +134,7 @@ runs:
       env:
         REFLOW_CONTEXT_GITHUB: ${{ steps.context-github.outputs.file }}
         REFLOW_CONTEXT_VALUES: ${{ steps.context-values.outputs.file }}
-        GITHUB_TOKEN:          ${{ step.var.outputs.token }}
+        GITHUB_TOKEN:          ${{ steps.var.outputs.token }}
         PATH:                  ${{ github.workspace }}/bin:${{ env.PATH }}
       run: |
         cat <<EOF | reflow call --uses "${{ inputs.call }}" --interval "${{ inputs.interval }}"
@@ -147,24 +147,6 @@ runs:
         cat <<EOF | reflow fmt --context-github bin/.github.json >> $GITHUB_ENV
         {{ toEnvPrefix "REFLOW_GIT_" .git }}
         EOF
-      shell:  ${{ steps.var.outputs.shell }}
-    - name: Reflow template
-      id:   template
-      env:
-        GITHUB_TOKEN: ${{ step.var.outputs.token }}
-        PATH:         ${{ github.workspace }}/bin:${{ env.PATH }}
-      run: |
-        tmp=$(mktemp)
-
-        cat <<EOF | reflow fmt --context-github bin/.github.json >> $tmp
-        ${{ inputs.template }}
-        EOF
-
-        cat <<EOF
-        ::set-output name=result::$(cat $tmp)
-        EOF
-
-        rm -vf $tmp
       shell:  ${{ steps.var.outputs.shell }}
     - name: Cleanup
       if: ${{ always() }}
