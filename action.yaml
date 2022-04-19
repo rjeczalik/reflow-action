@@ -92,6 +92,7 @@ runs:
       shell:  ${{ steps.var.outputs.shell }}
     - name: Write values context file
       id:   context-values
+      env:
         REFLOW_CONTEXT_GITHUB: ${{ steps.context-github.outputs.file }}
         GITHUB_TOKEN:          ${{ step.var.outputs.token }}
         PATH:                  ${{ github.workspace }}/bin:${{ env.PATH }}
