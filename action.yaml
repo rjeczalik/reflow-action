@@ -119,6 +119,7 @@ runs:
         cat <<EOF
         ::set-output name=file::$tmp
         EOF
+      shell:  ${{ steps.var.outputs.shell }}
     - name: Reflow template
       id:   template
       env:
