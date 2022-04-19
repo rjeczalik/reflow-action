@@ -99,7 +99,7 @@ runs:
       run: |
         tmp=$(mktemp)
 
-        cat <<EOF | refmt fmt > $tmp
+        cat <<EOF | reflow fmt > $tmp
         ${{ inputs.values }}
         EOF
 
