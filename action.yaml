@@ -139,6 +139,7 @@ runs:
 
         cat <<EOF | reflow fmt >> $GITHUB_ENV
         {{ .git | toEnvPrefix "REFLOW_GIT_" }}
+        {{ .values | toEnvPrefix "REFLOW_VALUE_" }}
         EOF
       shell:  ${{ steps.var.outputs.shell }}
     - name: Reflow call workflow
@@ -151,17 +152,22 @@ runs:
       run: |
         reflow call --uses "${{ inputs.call }}" --interval "${{ inputs.interval }}"
       shell:  ${{ steps.var.outputs.shell }}
-    - name: Reflow export environment variables
-      if:   ${{ inputs.export_env == 'true' }}
+    - name: Collect files for upload
+      if:   ${{ failure() && inputs.debug_shell == 'true' }}
+      id:   debug
       run: |
-        cat <<EOF | reflow fmt --context-github bin/.github.json >> $GITHUB_ENV
-        {{ toEnvPrefix "REFLOW_GIT_" .git }}
+        tmp=$(mktemp env.bash.XXXXXX)
+
+        env | grep REFLOW_ > $tmp
+
+        cat <<EOF
+        ::set-output name=file::$tmp
         EOF
       shell:  ${{ steps.var.outputs.shell }}
     - uses: actions/upload-artifact@v3
       if:   ${{ failure() && inputs.debug_shell == 'true' }}
       with:
-        name: reflow-debug-files
+        name: reflow-debug-files-${{ github.run_id }}
         path: |
           ${{ steps.context-github.outputs.file }}
           ${{ steps.context-values.outputs.file }}
@@ -172,5 +178,6 @@ runs:
         rm -fv bin/reflow \
           ${{ steps.context-github.outputs.file }} \
           ${{ steps.context-values.outputs.file }} \
-          ${{ steps.inputs.outputs.file }}
+          ${{ steps.inputs.outputs.file }} \
+          ${{ steps.debug.outputs.file }}
       shell:  ${{ steps.var.outputs.shell }}
